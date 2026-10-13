@@ -1408,8 +1408,11 @@
           ? [r.A,r.N,r.D,r.L,r.M,r.Mle,r.Mq,r.Mt].every(Number.isFinite)
           : [r.force,r.moment,r.targetMoment,r.windForce,r.windMoment,r.windTargetMoment].every(finiteVector)&&Number.isFinite(r.rotError)&&Number.isFinite(r.det);
         if(r.type==="2d"&&r.cp!=null&&!Number.isFinite(r.cp))valid=false;
+        if(r.type==="2d"&&r.source){
+          valid=valid&&Number.isFinite(r.source.area)&&Number.isFinite(r.source.perimeter)&&Number.isFinite(r.source.geometryFactor)&&(!r.source.centroid||finiteVector(r.source.centroid));
+        }
         if(r.type==="3d"&&r.source){
-          valid=valid&&Number.isFinite(r.source.area)&&r.source.triangles.every(function(triangle){return Number.isFinite(triangle.area)&&Number.isFinite(triangle.pressurePa)&&finiteVector(triangle.centroid);});
+          valid=valid&&Number.isFinite(r.source.area)&&(r.source.quality.volume==null||Number.isFinite(r.source.quality.volume))&&r.source.triangles.every(function(triangle){return Number.isFinite(triangle.area)&&Number.isFinite(triangle.pressurePa)&&finiteVector(triangle.centroid);});
         }
         if(!valid){r.invalid=true;r.invalidReasons=["The calculated forces, moments, or geometry exceed the finite numeric range; check units and reduce extreme input values."];}
         return r;
