@@ -1298,7 +1298,7 @@
         if(te.length!==1){alert("The current panel solver needs a sharp trailing edge represented by one contour vertex. Enter supplied data for a blunt-base section.");return;}
         var upper=te[0],lower=(upper+n-1)%n,V=val("velocity",NaN),rho=val("rho",NaN),mu=val("viscosity",NaN),chord=val("chord",NaN);
         if(!(V>0&&rho>0&&mu>0&&chord>0)){alert("Enter positive speed, density, viscosity, and chord.");return;}
-        var freestream=[V*Math.cos(alpha),-V*Math.sin(alpha)],matrix=[],rhs=[];
+        var freestream=[V*Math.cos(alpha),V*Math.sin(alpha)],matrix=[],rhs=[];
         function dot(a,b){return a[0]*b[0]+a[1]*b[1];}
         function influenceAt(i,j){return panelInfluence(panels[j],panels[i].cx,panels[i].cy,i===j);}
         for(var row=0;row<n;row++){
