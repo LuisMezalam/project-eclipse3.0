@@ -1402,6 +1402,18 @@
         var closed=boundary===0&&nonManifold===0&&winding===0;
         return {boundary:boundary,nonManifold:nonManifold,winding:winding,duplicates:duplicates,components:components,closed:closed,volume:closed?Math.abs(volume):null};
       }
+      function validateCalculatedResult(r) {
+        function finiteVector(value) { return Array.isArray(value)&&value.every(Number.isFinite); }
+        var valid=r.type==="2d"
+          ? [r.A,r.N,r.D,r.L,r.M,r.Mle,r.Mq,r.Mt].every(Number.isFinite)
+          : [r.force,r.moment,r.targetMoment,r.windForce,r.windMoment,r.windTargetMoment].every(finiteVector)&&Number.isFinite(r.rotError)&&Number.isFinite(r.det);
+        if(r.type==="2d"&&r.cp!=null&&!Number.isFinite(r.cp))valid=false;
+        if(r.type==="3d"&&r.source){
+          valid=valid&&Number.isFinite(r.source.area)&&r.source.triangles.every(function(triangle){return Number.isFinite(triangle.area)&&Number.isFinite(triangle.pressurePa)&&finiteVector(triangle.centroid);});
+        }
+        if(!valid){r.invalid=true;r.invalidReasons=["The calculated forces, moments, or geometry exceed the finite numeric range; check units and reduce extreme input values."];}
+        return r;
+      }
       function renderMeshAdvanced(r) {
         var card=el("meshAdvancedResults"),active=mode==="mesh3d"&&r.type==="3d"&&!!r.source;
         card.classList.toggle("hidden",!active);card.hidden=!active;
@@ -1444,10 +1456,15 @@
         if(invalidReasons.length) return {type:mode==="coeff3d"||mode==="mesh3d"?"3d":"2d",invalid:true,invalidReasons:invalidReasons,q:q,qs:qs,base:base};
         if(mode==="mesh3d"){
           if(!meshTriangles.length) return {type:"3d",invalid:true,missingMesh:true,q:q,qs:qs,base:base};
-          return calcMesh3d(base,q);
+          return validateCalculatedResult(calcMesh3d(base,q));
         }
-        if (mode==="coeff3d") return calc3d(base,q,qs);
-        return calc2d(base,q,qs);
+        if (mode==="coeff3d") return validateCalculatedResult(calc3d(base,q,qs));
+        var result=calc2d(base,q,qs);
+        if(mode==="panels2d"&&result.source&&!result.source.finite){
+          result.invalid=true;
+          result.invalidReasons=["Every panel needs finite coordinates, pressure, shear, and nonzero length."];
+        }
+        return validateCalculatedResult(result);
       }
       function stateHealth(r) {
         var issues=[], critical=false;
