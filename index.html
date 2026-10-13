@@ -543,12 +543,22 @@
             <div class="subview" id="source-mesh3d">
               <div class="form-section">
                 <div class="form-label-row"><h3 class="section-label">Mapped CFD triangle surface</h3><span class="tag neutral" id="meshStatus">No mesh loaded</span></div>
-                <p class="card-description">Import triangle geometry with pressure and wall-shear vectors at each vertex. Coordinates are body-axis x,y,z in metres; triangle vertex order sets the outward normal. Face-constant traction rows are supported too.</p>
+                <p class="card-description">Integrate mapped CFD surface pressure and wall shear into forces and moments. Import CSV triangles or ASCII legacy VTK POLYDATA; this post-processor does not solve the flow.</p>
                 <div class="field-grid two" style="margin-top:10px">
                   <div class="field"><label for="meshDataBasis">CFD field units</label><select id="meshDataBasis"><option value="pa">Pressure (Pa) / shear vector (Pa)</option><option value="coeff">Cₚ / Cᶠ vector</option></select></div>
-                  <div class="field"><label>&nbsp;</label><button class="button primary" id="importMeshButton" type="button">Import CFD triangle CSV</button><input class="file-input" id="meshFile" type="file" accept=".csv,text/csv"></div>
+                  <div class="field"><label for="meshVtkLengthUnit">VTK coordinate unit</label><select id="meshVtkLengthUnit" data-transient="true"><option value="1">metres</option><option value="0.001">millimetres</option><option value="0.01">centimetres</option><option value="0.0254">inches</option><option value="0.3048">feet</option></select></div>
+                  <div class="field"><label>&nbsp;</label><button class="button primary" id="importMeshButton" type="button">Import CFD surface data</button><input class="file-input" id="meshFile" type="file" accept=".csv,.vtk,text/csv,text/plain"></div>
                 </div>
-                <div class="callout" style="margin-top:10px"><strong>Vertex-field CSV (21 columns).</strong> Repeat x,y,z,p,τx,τy,τz for vertices 1, 2, and 3. Or use 13 columns: x1,y1,z1,x2,y2,z2,x3,y3,z3,p,τx,τy,τz for constant face data. A header row is optional. Use gauge pressure and body-axis shear vectors; coefficients are scaled by q∞.</div>
+                <div class="callout" style="margin-top:10px"><strong>CSV:</strong> per-vertex fields use 21 columns; face-constant fields use 13. <strong>VTK:</strong> ASCII legacy POLYDATA with POLYGONS and scalar pressure plus vector wall-shear arrays. Choose coordinate units before importing VTK. Use gauge pressure and body-axis shear vectors; coefficient fields are scaled by q∞.</div>
+                <div class="card" id="meshVtkMapping" style="margin-top:10px;padding:12px" hidden>
+                  <div class="form-label-row"><h3 class="section-label">VTK field mapping</h3><span class="tag neutral" id="meshVtkFileLabel">VTK surface</span></div>
+                  <p class="field-help">Select the scalar pressure field and the three-component wall-shear vector. Point fields interpolate over each triangle; cell fields are constant over the source polygon.</p>
+                  <div class="field-grid two">
+                    <div class="field"><label for="meshVtkPressureField">Pressure field</label><select id="meshVtkPressureField" data-transient="true"><option value="">Choose a scalar field</option></select></div>
+                    <div class="field"><label for="meshVtkShearField">Wall-shear vector</label><select id="meshVtkShearField" data-transient="true"><option value="">Choose a 3-component vector</option></select></div>
+                  </div>
+                  <button class="button small" id="applyVtkMappingButton" type="button" style="margin-top:8px">Apply field mapping</button>
+                </div>
                 <div class="field-grid three" style="margin-top:10px">
                   <div class="field"><label for="meshXOrigin">Moment origin xₒ (m)</label><input id="meshXOrigin" type="number" step="0.01" value="0"></div>
                   <div class="field"><label for="meshYOrigin">Moment origin yₒ (m)</label><input id="meshYOrigin" type="number" step="0.01" value="0"></div>
@@ -557,7 +567,7 @@
                   <div class="field"><label for="meshYTarget">Moment target yᵦ (m)</label><input id="meshYTarget" type="number" step="0.01" value="0"></div>
                   <div class="field"><label for="meshZTarget">Moment target zᵦ (m)</label><input id="meshZTarget" type="number" step="0.01" value="0"></div>
                 </div>
-                <div class="field-help">Triangle pressure and shear are interpolated from vertices and integrated over each face. Shear vectors are projected onto the face tangent plane. Verify outward triangle winding before trusting pressure force signs.</div>
+                <div class="field-help">Pressure traction is −p n; imported global shear vectors are projected onto each face tangent plane. Verify outward winding and field units before trusting signs. Mesh checks below report open boundaries, non-manifold edges, winding conflicts, duplicate faces, and connected components.</div>
               </div>
             </div>
           </div>
@@ -578,7 +588,7 @@
               <div class="capability"><span class="cap-icon">✓</span><span>Reference point force–moment transport</span><span class="tag">Exact</span></div>
               <div class="capability"><span class="cap-icon">✓</span><span>Panel and triangle traction integration</span><span class="tag">Integrated</span></div>
               <div class="capability"><span class="cap-icon approx">~</span><span>2D pressure / wall-shear estimate</span><span class="tag approx">Panel + correlation</span></div>
-              <div class="capability"><span class="cap-icon">✓</span><span>CFD triangle mapping &amp; 3D integration</span><span class="tag">CSV fields</span></div>
+              <div class="capability"><span class="cap-icon">✓</span><span>CFD surface mapping &amp; 3D integration</span><span class="tag">CSV / VTK</span></div>
               <div class="capability"><span class="cap-icon">✓</span><span>Mach / Reynolds condition indicators</span><span class="tag">Screening</span></div>
               <div class="capability"><span class="cap-icon">✓</span><span>Airfoil polar interpolation</span><span class="tag">Imported data</span></div>
               <div class="capability"><span class="cap-icon approx">~</span><span>Finite-wing / stability estimates</span><span class="tag approx">Declared model</span></div>
@@ -608,6 +618,21 @@
         <div class="card metric-card"><div class="metric-label">Moment at target |Mᵦ|</div><div class="metric-value" id="mM3">—</div><div class="metric-detail">transported wrench · N·m</div></div>
         <div class="card metric-card"><div class="metric-label">Sideslip β</div><div class="metric-value" id="mBeta3">—</div><div class="metric-detail">wind-frame rotation · deg</div></div>
       </div>
+      <article id="meshAdvancedResults" class="card result-section hidden" style="margin-top:12px">
+        <div class="card-head"><div><h3 class="card-title" style="font-size:16px">CFD surface diagnostics</h3><p class="card-description">Load decomposition and topology checks for the imported surface. Boundary edges can be intentional for an open patch.</p></div><span class="tag neutral" id="meshQualityBadge">—</span></div>
+        <div class="mini-grid" style="margin-bottom:12px">
+          <div class="mini-tile"><div class="mini-label">Boundary edges</div><div class="mini-value" id="meshBoundaryEdges">—</div></div>
+          <div class="mini-tile"><div class="mini-label">Non-manifold edges</div><div class="mini-value" id="meshNonManifoldEdges">—</div></div>
+          <div class="mini-tile"><div class="mini-label">Winding conflicts</div><div class="mini-value" id="meshWindingConflicts">—</div></div>
+          <div class="mini-tile"><div class="mini-label">Components / duplicate faces</div><div class="mini-value" id="meshComponents">—</div></div>
+        </div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>Load contribution</th><th>Force (body axes), N</th><th>Moment at origin O, N·m</th></tr></thead><tbody>
+          <tr><td>Pressure</td><td id="meshPressureForce">—</td><td id="meshPressureMoment">—</td></tr>
+          <tr><td>Wall shear</td><td id="meshShearForce">—</td><td id="meshShearMoment">—</td></tr>
+          <tr><td>Combined</td><td id="meshCombinedForce">—</td><td id="meshCombinedMoment">—</td></tr>
+        </tbody></table></div>
+        <p class="field-help" id="meshQualityNote" style="margin-bottom:0">Topology checks are diagnostic; a surface patch need not be a closed watertight body.</p>
+      </article>
 
       <div class="result-layout">
         <article class="card visual-card">
@@ -831,7 +856,9 @@
         <article class="card equation-card"><div class="equation-title">2D Hess–Smith pressure estimate</div><div class="equation">V<sub>∞</sub>·n̂<sub>i</sub> + Σ<sub>j</sub>σ<sub>j</sub>u<sub>n,ij</sub> + γΣ<sub>j</sub>u<sub>v,n,ij</sub> = 0<br>V<sub>t,i</sub> = V<sub>∞</sub>·t̂<sub>i</sub> + Σσ<sub>j</sub>u<sub>n,t,ij</sub> + γΣu<sub>v,t,ij</sub><br>C<sub>p,i</sub> = 1 − (V<sub>t,i</sub>/V<sub>∞</sub>)²</div><div class="equation-note">A constant source strength per panel and one circulation strength enforce no-penetration; a sharp trailing-edge Kutta condition closes the system. This is an inviscid, incompressible, attached-flow estimate. Refine the contour and compare against validated data.</div></article>
         <article class="card equation-card"><div class="equation-title">Approximate wall shear</div><div class="equation">Re<sub>x</sub> = ρ|V<sub>t</sub>|s/μ<br>C<sub>f,x</sub> ≈ 0.664/√Re<sub>x</sub> (laminar)<br>C<sub>f,x</sub> ≈ 0.0592/Re<sub>x</sub><sup>0.2</sup> (turbulent)<br>C<sub>f</sub> = sign(V<sub>t</sub>)(V<sub>t</sub>/V<sub>∞</sub>)²C<sub>f,x</sub></div><div class="equation-note">The smooth-flat-plate correlation uses a simple transition Reynolds threshold and a leading-edge distance proxy. It omits pressure-gradient and separation effects; treat Cᶠ as a rough estimate, not a boundary-layer solution.</div></article>
         <article class="card equation-card"><div class="equation-title">3D triangle traction mapping</div><div class="equation">n̂ = ((r₂−r₁)×(r₃−r₁))/|(r₂−r₁)×(r₃−r₁)|<br>t = −p n̂ + [τ−(τ·n̂)n̂]<br>F = Σ<sub>f</sub> ∫<sub>f</sub> t dA<br>M<sub>O</sub> = Σ<sub>f</sub> ∫<sub>f</sub> (r−r<sub>O</sub>)×t dA</div><div class="equation-note">Vertex pressure and shear are linearly interpolated on each flat triangle and integrated with a three-point degree-2 rule. The vertex order sets the outward normal. Constant-face rows are treated as repeated vertex values.</div></article>
-        <article class="card equation-card"><div class="equation-title">CFD triangle CSV formats</div><div class="equation-note">Coordinates are body-axis x,y,z in metres. A 21-column row repeats x,y,z,p,τx,τy,τz for each vertex. A 13-column row contains x₁,y₁,z₁,x₂,y₂,z₂,x₃,y₃,z₃,p,τx,τy,τz for constant face data. Select Pa or Cₚ/Cᶠ before import; pressure is gauge pressure and shear components are projected onto the triangle plane.</div></article>
+        <article class="card equation-card"><div class="equation-title">CFD surface CSV and VTK import</div><div class="equation-note">CSV accepts 21 values per triangle for vertex fields or 13 for face-constant fields. ASCII legacy VTK DATASET POLYDATA accepts POINTS, POLYGONS, SCALARS and VECTORS (or 1/3-component FIELD arrays); fan triangulation preserves source polygon cell values. Map one scalar pressure and one three-component shear vector. Coordinates are converted from the selected VTK unit to metres. Binary/XML VTK, unstructured volumes, extra VTK cell types, and solving the flow are unsupported.</div></article>
+        <article class="card equation-card"><div class="equation-title">Pressure/shear wrench split</div><div class="equation">F<sub>p</sub>=∫<sub>S</sub>−p n̂ dS; F<sub>τ</sub>=∫<sub>S</sub>τ<sub>t</sub>dS<br>M<sub>O</sub>=∫<sub>S</sub>(r−r<sub>O</sub>)×dF</div><div class="equation-note">The diagnostic reports pressure and tangential wall-shear contributions separately, then shows their sum. Imported shear is projected onto each triangle's tangent plane; pressure is a gauge pressure unless coefficient fields are selected.</div></article>
+        <article class="card equation-card"><div class="equation-title">Surface topology diagnostics</div><div class="equation-note">Triangle edges are welded by coordinate tolerance and checked for open boundaries, edges shared by more than two faces, inconsistent shared-edge winding, duplicate triangles, and connected components. Open boundaries can be valid for a surface patch. These checks do not test skewness, aspect ratio, CFD residuals, conservation, or solution accuracy.</div></article>
       </div>
 
       <div class="section-heading"><div><h2>Common special reductions</h2><p>Useful checks and simplified forms for familiar airfoil setups.</p></div></div>
@@ -856,7 +883,7 @@
         <article class="card equation-card"><div class="equation-title">Panel input rules</div><div class="equation-note">Enter consecutive vertices counterclockwise so the right-hand panel normal points outward. p₁, τ₁ belong to the directed panel start and p₂, τ₂ to its end. Positive shear follows start-to-end; for the upper face of a CCW contour this direction runs trailing edge to leading edge. Values may be Pa or Cₚ/Cᶠ as selected. Use every exposed base/edge face and one consistent absolute or gauge pressure reference. Refine near rapid gradients. The positive section-area modifier scales y/c and the contour thickness, but reuses the same supplied surface values.</div></article>
         <article class="card equation-card"><div class="equation-title">Coefficient input rules</div><div class="equation-note">Choose whether the supplied forces are body-axis or wind-axis coefficients, and enter a consistent reference area. For 2D, the moment coefficient is about the declared input point and uses q∞ S cₘ. For 3D, supply the separate moment lengths, then rotate and transport the resulting dimensional wrench.</div></article>
         <article class="card equation-card"><div class="equation-title">Beam-transfer rules</div><div class="equation-note">The optional estimate uses a symmetric straight wing and a 2D section load mirrored across the centerline. Let F<sub>wing</sub> be the total full-wing component and s run root-to-tip over [0,b/2]. The semispan shear is F<sub>wing</sub>/2. Uniform and elliptical load families are the only selectable shapes; a total 3D wrench is insufficient to infer a spanwise field.</div></article>
-        <article class="card equation-card"><div class="equation-title">Scope &amp; validation rules</div><div class="equation-note">The 2D solver estimates incompressible potential-flow pressure on a closed contour with a sharp trailing-edge Kutta condition, then estimates wall shear using local flat-plate correlations. It does not model pressure-gradient boundary layers, transition, separation, compressibility, shocks, or profile drag. The separate low-speed lifting-line screen estimates induced drag from declared inputs but does not generate a finite-wing pressure field. The CFD route integrates imported, already-mapped triangle fields; it does not parse native CFD formats or solve the flow. Beam stress and deflection are outside scope.</div></article>
+        <article class="card equation-card"><div class="equation-title">Scope &amp; validation rules</div><div class="equation-note">The 2D solver estimates incompressible potential-flow pressure on a closed contour with a sharp trailing-edge Kutta condition, then estimates wall shear using local flat-plate correlations. It does not model pressure-gradient boundary layers, transition, separation, compressibility, shocks, or profile drag. The separate low-speed lifting-line screen estimates induced drag from declared inputs but does not generate a finite-wing pressure field. The CFD route post-processes mapped CSV or ASCII legacy VTK POLYDATA surface fields; it does not solve Navier–Stokes or interpret volume meshes. Beam stress and deflection are outside scope.</div></article>
       </div>
 
       <div class="section-heading"><div><h2>Flight conditions &amp; data-backed estimates</h2><p>Use the operating state to judge whether an aerodynamic dataset or approximation applies.</p></div></div>
@@ -935,6 +962,8 @@
       var latest = null;
       var meshTriangles = [];
       var meshInputRows = [];
+      var meshVtkDataset = null;
+      var meshQualityCache = null;
       var panelFieldMethod = "Built-in sample tractions";
       var panelEstimateConditions = null;
       var polarData = [];
@@ -1321,7 +1350,7 @@
         var coeffMode=el("meshDataBasis").value==="coeff",stressScale=coeffMode?q:1;
         var origin=[val("meshXOrigin",0),val("meshYOrigin",0),val("meshZOrigin",0)];
         var target=[val("meshXTarget",0),val("meshYTarget",0),val("meshZTarget",0)];
-        var force=[0,0,0],moment=[0,0,0],areaTotal=0,display=[];
+        var force=[0,0,0],moment=[0,0,0],pressureForce=[0,0,0],shearForce=[0,0,0],pressureMoment=[0,0,0],shearMoment=[0,0,0],areaTotal=0,display=[];
         meshTriangles.forEach(function(tri){
           var a=tri.vertices[0],b=tri.vertices[1],c=tri.vertices[2];
           var ab=[b.x-a.x,b.y-a.y,b.z-a.z],ac=[c.x-a.x,c.y-a.y,c.z-a.z],normalRaw=cross(ab,ac),twiceArea=norm(normalRaw),area=twiceArea/2;
@@ -1335,18 +1364,66 @@
               for(var d=0;d<3;d++){tau[d]+=w[k]*verts[k].tau[d]*stressScale;pos[d]+=w[k]*verts[k][["x","y","z"][d]];}
             }
             var normalShear=dot3(tau,normal),tangentTau=tau.map(function(x,i){return x-normalShear*normal[i];});
-            var traction=tangentTau.map(function(x,i){return x-p*normal[i];});
-            var df=traction.map(function(x){return x*area/3;}),dm=cross(pos.map(function(x,i){return x-origin[i];}),traction).map(function(x){return x*area/3;});
-            for(var j=0;j<3;j++){force[j]+=df[j];moment[j]+=dm[j];}
+            var pTraction=normal.map(function(x){return -p*x;}),sTraction=tangentTau;
+            var pForce=pTraction.map(function(x){return x*area/3;}),sForce=sTraction.map(function(x){return x*area/3;});
+            var lever=pos.map(function(x,i){return x-origin[i];}),pMoment=cross(lever,pTraction).map(function(x){return x*area/3;}),sMoment=cross(lever,sTraction).map(function(x){return x*area/3;});
+            for(var j=0;j<3;j++){pressureForce[j]+=pForce[j];shearForce[j]+=sForce[j];pressureMoment[j]+=pMoment[j];shearMoment[j]+=sMoment[j];force[j]+=pForce[j]+sForce[j];moment[j]+=pMoment[j]+sMoment[j];}
           });
           var centroid=[(a.x+b.x+c.x)/3,(a.y+b.y+c.y)/3,(a.z+b.z+c.z)/3];
           display.push({centroid:centroid,pressurePa:(a.p+b.p+c.p)/3*stressScale,area:area});
         });
         var M=matrix3(base.alpha,base.beta),arm=target.map(function(x,i){return x-origin[i];}),shift=cross(arm,force);
         var targetMoment=moment.map(function(x,i){return x-shift[i];});
-        return {type:"3d",force:force,moment:moment,targetMoment:targetMoment,windForce:mv(M,force),windMoment:mv(M,moment),windTargetMoment:mv(M,targetMoment),matrix:M,rotError:rotResidual(M),det:det3(M),sourceBasis:"CFD triangle surface",origin:origin,target:target,q:q,qs:q*base.area,base:base,source:{triangles:display,area:areaTotal,faceCount:meshTriangles.length,fieldBasis:coeffMode?"Cₚ/Cᶠ":"Pa"}};
+        if(!meshQualityCache)meshQualityCache=meshQualityDiagnostics();var quality=meshQualityCache;
+        return {type:"3d",force:force,moment:moment,targetMoment:targetMoment,pressureForce:pressureForce,shearForce:shearForce,pressureMoment:pressureMoment,shearMoment:shearMoment,windForce:mv(M,force),windMoment:mv(M,moment),windTargetMoment:mv(M,targetMoment),matrix:M,rotError:rotResidual(M),det:det3(M),sourceBasis:"CFD triangle surface",origin:origin,target:target,q:q,qs:q*base.area,base:base,source:{triangles:display,area:areaTotal,faceCount:meshTriangles.length,fieldBasis:coeffMode?"Cₚ/Cᶠ":"Pa",quality:quality}};
       }
       function dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+      function meshQualityDiagnostics() {
+        var points=[],faces=[],bbox=[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity];
+        meshTriangles.forEach(function(tri){var ids=[];tri.vertices.forEach(function(v){var i=points.length;points.push(v);ids.push(i);bbox[0]=Math.min(bbox[0],v.x);bbox[1]=Math.min(bbox[1],v.y);bbox[2]=Math.min(bbox[2],v.z);bbox[3]=Math.max(bbox[3],v.x);bbox[4]=Math.max(bbox[4],v.y);bbox[5]=Math.max(bbox[5],v.z);});faces.push(ids);});
+        if(!faces.length)return {boundary:0,nonManifold:0,winding:0,duplicates:0,components:0,closed:false,volume:null};
+        var scale=Math.max(bbox[3]-bbox[0],bbox[4]-bbox[1],bbox[5]-bbox[2],1),tol=scale*1e-9;
+        function key(v){return [v.x,v.y,v.z].map(function(x){return Math.round(x/tol);}).join(":");}
+        var edges=Object.create(null),faceKeys=Object.create(null),adj=faces.map(function(){return [];});
+        var duplicates=0,volume=0;
+        faces.forEach(function(ids,fi){
+          var keys=ids.map(function(i){return key(points[i]);}),sorted=keys.slice().sort().join("|");
+          if(faceKeys[sorted])duplicates++;else faceKeys[sorted]=true;
+          var a=points[ids[0]],b=points[ids[1]],c=points[ids[2]];volume+=(a.x*(b.y*c.z-b.z*c.y)+a.y*(b.z*c.x-b.x*c.z)+a.z*(b.x*c.y-b.y*c.x))/6;
+          for(var j=0;j<3;j++){
+            var ka=keys[j],kb=keys[(j+1)%3],canonical=ka<kb?ka+"|"+kb:kb+"|"+ka,dir=ka<kb?1:-1;
+            if(!edges[canonical])edges[canonical]={faces:[],dirs:[]};edges[canonical].faces.push(fi);edges[canonical].dirs.push(dir);
+          }
+        });
+        var boundary=0,nonManifold=0,winding=0;
+        Object.keys(edges).forEach(function(k){var e=edges[k];if(e.faces.length===1)boundary++;else if(e.faces.length>2)nonManifold++;if(e.faces.length===2){adj[e.faces[0]].push(e.faces[1]);adj[e.faces[1]].push(e.faces[0]);if(e.dirs[0]===e.dirs[1])winding++;}});
+        var visited=new Uint8Array(faces.length),components=0;
+        for(var f=0;f<faces.length;f++)if(!visited[f]){components++;var stack=[f];visited[f]=1;while(stack.length){var current=stack.pop();adj[current].forEach(function(next){if(!visited[next]){visited[next]=1;stack.push(next);}});}}
+        var closed=boundary===0&&nonManifold===0&&winding===0;
+        return {boundary:boundary,nonManifold:nonManifold,winding:winding,duplicates:duplicates,components:components,closed:closed,volume:closed?Math.abs(volume):null};
+      }
+      function renderMeshAdvanced(r) {
+        var card=el("meshAdvancedResults"),active=mode==="mesh3d"&&r.type==="3d"&&!!r.source;
+        card.classList.toggle("hidden",!active);card.hidden=!active;
+        if(!active)return;
+        var q=r.source.quality;
+        setText("meshBoundaryEdges",q.boundary);setText("meshNonManifoldEdges",q.nonManifold);setText("meshWindingConflicts",q.winding);setText("meshComponents",q.components+" / "+q.duplicates);
+        setText("meshPressureForce","("+r.pressureForce.map(function(x){return num(x,3);}).join(", ")+")");
+        setText("meshShearForce","("+r.shearForce.map(function(x){return num(x,3);}).join(", ")+")");
+        setText("meshCombinedForce","("+r.force.map(function(x){return num(x,3);}).join(", ")+")");
+        setText("meshPressureMoment","("+r.pressureMoment.map(function(x){return num(x,3);}).join(", ")+")");
+        setText("meshShearMoment","("+r.shearMoment.map(function(x){return num(x,3);}).join(", ")+")");
+        setText("meshCombinedMoment","("+r.moment.map(function(x){return num(x,3);}).join(", ")+")");
+        var issues=[];if(q.nonManifold)issues.push(q.nonManifold+" non-manifold edge(s)");if(q.winding)issues.push(q.winding+" shared-edge winding conflict(s)");if(q.duplicates)issues.push(q.duplicates+" duplicate face(s)");
+        var badge=issues.length?"Review topology":q.closed?"Closed · orientation consistent":"Open surface patch";
+        setText("meshQualityBadge",badge);el("meshQualityBadge").className="tag"+(issues.length?" approx":" neutral");
+        var note=q.closed?"Edge topology is closed and consistently wound; signed volume magnitude is "+num(q.volume,6)+" m³. This check does not validate the imported CFD solution.":"";
+        if(q.boundary)note+=(note?" ":"")+q.boundary+" boundary edge(s): expected for an open patch, but check whether the intended pressure surface is complete.";
+        if(issues.length)note+=(note?" ":"")+"Review "+issues.join(", ")+"; face orientation affects pressure-force signs.";
+        if(q.components>1)note+=(note?" ":"")+q.components+" disconnected surface components detected.";
+        if(!note)note="Topology checks passed. They are geometric diagnostics; they do not establish mesh resolution or CFD solution accuracy.";
+        setText("meshQualityNote",note);
+      }
       function calc() {
         var base=readBase(), invalidReasons=[];
         function requirePositive(value,label) {
@@ -1375,7 +1452,7 @@
       function stateHealth(r) {
         var issues=[], critical=false;
         if (r.invalid) {
-          if(r.missingMesh) issues.push("Import a CFD triangle CSV to calculate a 3D surface wrench.");
+          if(r.missingMesh) issues.push("Import CFD surface data as CSV triangles or ASCII legacy VTK POLYDATA to calculate the 3D surface wrench.");
           else issues=issues.concat(r.invalidReasons||["Correct the required inputs before calculating."]);
           return {issues:issues,status:"critical"};
         }
@@ -1391,7 +1468,10 @@
         } else if (r.type==="2d" && r.cp==null) issues.push("Normal resultant is near zero; a chordwise center of pressure is undefined or ill-conditioned.");
         if (r.type==="3d" && r.rotError>1e-10) { issues.push("The body-to-wind matrix failed its orthogonality check."); critical=true; }
         if (mode==="coeff3d") issues.push("A whole-model 3D coefficient wrench does not define a spanwise beam load field.");
-        if (mode==="mesh3d"&&r.source) issues.push("Check that every imported triangle is wound outward; reversed faces reverse pressure-force signs.");
+        if (mode==="mesh3d"&&r.source) {
+          issues.push("Check that the imported surface is outward-wound; face orientation sets pressure-force signs.");
+          if(r.source.quality.nonManifold||r.source.quality.winding||r.source.quality.duplicates)issues.push("Mesh topology diagnostics found non-manifold edges, winding conflicts, or duplicate faces; inspect the CFD surface diagnostics.");
+        }
         var status=critical?"critical":issues.length?"watch":"ready";
         return {issues:issues,status:status};
       }
@@ -1423,7 +1503,7 @@
           setHealthTile("healthGeom",r.missingMesh?"Mesh required":"Input check failed",detail,"fail");
           setHealthTile("healthAxes","Not calculated","Resolve the critical input issue before transforming forces.","");
           setHealthTile("healthTransport","Not calculated","No force or moment result is available yet.","");
-          setHealthTile("healthResolution",r.missingMesh?"Awaiting CFD mesh":"Awaiting valid inputs",r.missingMesh?"Import a CFD triangle CSV to calculate the surface wrench.":"Health checks will run after a valid calculation.","");
+          setHealthTile("healthResolution",r.missingMesh?"Awaiting CFD mesh":"Awaiting valid inputs",r.missingMesh?"Import CSV triangles or ASCII legacy VTK POLYDATA.":"Health checks will run after a valid calculation.","");
           return;
         }
         if (r.type==="2d") {
@@ -1440,7 +1520,7 @@
           var meshArmMoment=cross([r.target[0]-r.origin[0],r.target[1]-r.origin[1],r.target[2]-r.origin[2]],r.force);
           var meshTransport=norm(r.moment.map(function(x,i){return x-meshArmMoment[i]-r.targetMoment[i];}));
           setHealthTile("healthTransport","Consistent",num(meshTransport,5)+" N·m transport residual","");
-          setHealthTile("healthResolution","Mapped CFD field","Vertex pressure and shear; 3-point triangle integration.","");
+          setHealthTile("healthResolution","Mapped CFD field","Point- or cell-associated pressure/shear; 3-point integration.","");
         } else {
           setHealthTile("healthGeom","Not required","Integrated 3D coefficients; no surface mesh input.","");
           setHealthTile("healthAxes",r.rotError<1e-10?"SO(3) verified":"Check matrix",num(r.rotError,3)+" residual · det "+num(r.det,6),r.rotError<1e-10?"":"fail");
@@ -1672,6 +1752,7 @@
         svg.innerHTML=parts.join("");
       }
       function render2d(r) {
+        el("meshAdvancedResults").classList.add("hidden");el("meshAdvancedResults").hidden=true;
         el("metrics2d").classList.remove("hidden"); el("metrics3d").classList.add("hidden");
         el("wrench2d").classList.remove("hidden"); el("wrench3d").classList.add("hidden");
         setText("wrenchBasisTag",mode==="panels2d"?"Panel integration":"Integrated coefficients");
@@ -1694,6 +1775,7 @@
       }
       function render3d(r) {
         el("metrics2d").classList.add("hidden"); el("metrics3d").classList.remove("hidden");
+        renderMeshAdvanced(r);
         el("wrench2d").classList.add("hidden"); el("wrench3d").classList.remove("hidden");
         setText("wrenchBasisTag",mode==="mesh3d"?"CFD mesh integration":"3D body / wind");
         setText("mF3",fmtN(norm(r.force))); setText("mD3",fmtN(r.windForce[0])); setText("mY3",fmtN(r.windForce[1])); setText("mL3",fmtN(r.windForce[2]));
@@ -1777,6 +1859,7 @@
         if(r.invalid){
           var h=stateHealth(r); renderBanner(r,h); renderHealth(r,h);
           el("metrics2d").classList.add("hidden"); el("metrics3d").classList.add("hidden");
+          el("meshAdvancedResults").classList.add("hidden");el("meshAdvancedResults").hidden=true;
           renderBeam(r);
           return;
         }
@@ -1826,40 +1909,32 @@
       });
       el("solve2dButton").addEventListener("click",estimate2dFlow);
       el("importMeshButton").addEventListener("click",function(){el("meshFile").click();});
+      el("applyVtkMappingButton").addEventListener("click",function(){try{var rows=mapVtkDataset();activateMeshRows(rows,"VTK mapped fields");}catch(error){alert("VTK field mapping failed: "+error.message);}});
       el("meshFile").addEventListener("change",function(event){
         var file=event.target.files&&event.target.files[0];if(!file)return;
+        if(file.size>50000000){alert("CFD surface file exceeds the 50 MB browser import limit.");event.target.value="";return;}
         var reader=new FileReader();
         reader.onload=function(){
-          var lines=String(reader.result||"").replace(/^\uFEFF/,"").split(/\r?\n/).filter(function(x){return x.trim();});
-          if(!lines.length){alert("The selected CSV has no triangle rows.");return;}
-          var numericCell=/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
-          var first=lines[0].split(",").map(function(x){return x.trim();});
-          var records=first.some(function(x){return !numericCell.test(x);})?lines.slice(1):lines;
-          var cells=records.map(function(line){return line.split(",").map(function(x){return x.trim();});});
-          var rows=cells.map(function(row){return row.map(function(x){return Number(x);});});
-          if(!rows.length||cells.some(function(row){return row.length!==cells[0].length||(row.length!==13&&row.length!==21)||row.some(function(x){return !numericCell.test(x);});})||rows.some(function(row){return row.some(function(x){return !Number.isFinite(x);});})){
-            alert("Each CFD triangle row must contain 13 face-constant values or 21 per-vertex values; all fields must be finite numbers.");return;
-          }
-          var parsed=rows.map(function(row){
-            var vertices=[];
-            if(row.length===13){
-              for(var i=0;i<3;i++) vertices.push({x:row[i*3],y:row[i*3+1],z:row[i*3+2],p:row[9],tau:[row[10],row[11],row[12]]});
-            }else{
-              for(var j=0;j<3;j++){var k=j*7;vertices.push({x:row[k],y:row[k+1],z:row[k+2],p:row[k+3],tau:[row[k+4],row[k+5],row[k+6]]});}
+          try {
+            var content=String(reader.result||"");
+            if(/^\s*#\s*vtk\s+DataFile\s+Version/i.test(content)||/\.vtk$/i.test(file.name)){
+              prepareVtkMapping(parseLegacyVtk(content),file.name);
+              if(el("meshVtkPressureField").value&&el("meshVtkShearField").value){var vtkRows=mapVtkDataset();activateMeshRows(vtkRows,"VTK mapped fields");}
+            } else {
+              meshVtkDataset=null;el("meshVtkMapping").hidden=true;
+              var lines=content.replace(/^\uFEFF/,"").split(/\r?\n/).filter(function(x){return x.trim();});
+              if(!lines.length)throw new Error("The selected CSV has no triangle rows.");
+              var numericCell=/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+              var first=lines[0].split(",").map(function(x){return x.trim();});
+              var records=first.some(function(x){return !numericCell.test(x);})?lines.slice(1):lines;
+              var cells=records.map(function(line){return line.split(",").map(function(x){return x.trim();});});
+              var rows=cells.map(function(row){return row.map(function(x){return Number(x);});});
+              if(!rows.length||cells.some(function(row){return row.length!==cells[0].length||(row.length!==13&&row.length!==21)||row.some(function(x){return !numericCell.test(x);});})||rows.some(function(row){return row.some(function(x){return !Number.isFinite(x);});}))throw new Error("Each CSV triangle row must contain 13 face-constant values or 21 per-vertex values; all fields must be finite numbers.");
+              activateMeshRows(rows,rows[0].length===21?"vertex fields":"face fields");
             }
-            var ab=[vertices[1].x-vertices[0].x,vertices[1].y-vertices[0].y,vertices[1].z-vertices[0].z];
-            var ac=[vertices[2].x-vertices[0].x,vertices[2].y-vertices[0].y,vertices[2].z-vertices[0].z];
-            if(norm(cross(ab,ac))<1e-14) return null;
-            return {vertices:vertices};
-          });
-          if(parsed.some(function(x){return !x;})){alert("The CSV contains a zero-area or degenerate triangle; correct the mesh before importing.");return;}
-          meshTriangles=parsed;meshInputRows=rows;
-          setText("meshStatus",meshTriangles.length+" triangles · "+(rows[0].length===21?"vertex fields":"face fields"));
-          mode="mesh3d";document.querySelectorAll("[data-mode]").forEach(function(b){b.classList.toggle("active",b.dataset.mode===mode);});
-          document.querySelectorAll(".subview").forEach(function(v){v.classList.toggle("active",v.id==="source-"+mode);});
-          syncModeControls();update();
+          } catch(error) { alert("CFD surface import failed: "+error.message); }
         };
-        reader.readAsText(file);event.target.value="";
+        reader.onerror=function(){alert("The CFD surface file could not be read.");};reader.readAsText(file);event.target.value="";
       });
       el("addPanel").addEventListener("click",function(){
         var panels=readPanels(), last=panels[panels.length-1]||{x1:0,y1:0,x2:1,y2:0,p:0,tau:0};
@@ -1905,13 +1980,82 @@
       }
       function captureControls() {
         var values={};
-        document.querySelectorAll("input[id],select[id],textarea[id]").forEach(function(node){if(node.type!=="file")values[node.id]=node.value;});
+        document.querySelectorAll("input[id],select[id],textarea[id]").forEach(function(node){if(node.type!=="file"&&!node.hasAttribute("data-transient"))values[node.id]=node.value;});
         return values;
       }
       function capturePanelInputs() {
         return Array.from(document.querySelectorAll(".panel-row")).map(function(row){var values={};row.querySelectorAll("[data-field]").forEach(function(input){values[input.dataset.field]=input.value;});return values;});
       }
       function isNumericText(value) { return value===""||(/^[+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[eE][+-]?\d+)?$/.test(value)&&Number.isFinite(Number(value))); }
+      function parseLegacyVtk(text) {
+        var lines=String(text||"").replace(/^\uFEFF/,"").split(/\r?\n/);
+        if(lines.length<5||!/^\s*#\s*vtk\s+DataFile\s+Version/i.test(lines[0]))throw new Error("Expected a legacy VTK file beginning with '# vtk DataFile Version'.");
+        if(lines[2].trim().toUpperCase()!=="ASCII")throw new Error("Only ASCII legacy VTK files are supported. Export the surface as ASCII POLYDATA.");
+        if(!/^\s*DATASET\s+POLYDATA\s*$/i.test(lines[3]))throw new Error("This importer supports only legacy VTK DATASET POLYDATA surface files.");
+        var tokens=lines.slice(4).join(" ").trim().split(/\s+/).filter(Boolean),at=0;
+        function next(){if(at>=tokens.length)throw new Error("Unexpected end of VTK file.");return tokens[at++];}
+        function expect(word){var actual=next();if(actual.toUpperCase()!==word)throw new Error("Expected VTK record "+word+" but found "+actual+".");}
+        function integer(label,max){var raw=next();if(!/^\d+$/.test(raw))throw new Error("Invalid "+label+" in VTK file.");var n=Number(raw);if(!Number.isSafeInteger(n)||n<0||n>max)throw new Error("Unsupported "+label+" size in VTK file.");return n;}
+        function readValues(count,label){if(count>50000000)throw new Error("VTK "+label+" array is too large for browser import.");var values=new Array(count);for(var i=0;i<count;i++){var raw=next(),n=Number(raw);if(!Number.isFinite(n))throw new Error("VTK "+label+" contains a non-finite or non-numeric value.");values[i]=n;}return values;}
+        expect("POINTS");var pointCount=integer("point count",1000000);if(pointCount<3)throw new Error("VTK surface needs at least three points.");next();
+        var xyz=readValues(pointCount*3,"point coordinates"),points=[];for(var p=0;p<pointCount;p++)points.push([xyz[p*3],xyz[p*3+1],xyz[p*3+2]]);
+        while(tokens[at]==="VERTICES"||tokens[at]==="LINES"){var emptyType=next().toUpperCase(),emptyCount=integer(emptyType+" count",150000),emptySize=integer(emptyType+" connectivity size",10000000);if(emptyCount!==0||emptySize!==0)throw new Error("Only POLYGONS geometry is supported; non-empty "+emptyType+" cells are not supported.");}
+        expect("POLYGONS");var polygonCount=integer("polygon count",150000);if(!polygonCount)throw new Error("VTK surface contains no polygons.");var declaredSize=integer("polygon connectivity size",10000000),polygons=[],seenSize=0,triangleCount=0;
+        for(var f=0;f<polygonCount;f++){var vertices=integer("polygon vertex count",pointCount);if(vertices<3)throw new Error("A VTK polygon has fewer than three vertices.");seenSize+=vertices+1;var indices=[];for(var v=0;v<vertices;v++){var index=integer("point index",pointCount-1);indices.push(index);}polygons.push(indices);triangleCount+=vertices-2;if(triangleCount>150000)throw new Error("Triangulated surface exceeds the 150,000 triangle browser limit.");}
+        if(seenSize!==declaredSize)throw new Error("VTK POLYGONS connectivity count does not match its declared size.");
+        var pointArrays=[],cellArrays=[],association=null;
+        function arrayRecord(name,components,tuples,values,assoc){if((components===1||components===3)&&tuples===(assoc==="point"?pointCount:polygonCount)){var target=assoc==="point"?pointArrays:cellArrays;if(target.some(function(a){return a.name===name;}))throw new Error("VTK contains duplicate array name '"+name+"' for the same data association.");target.push({name:name,components:components,values:values,association:assoc});}}
+        while(at<tokens.length){var record=next().toUpperCase();
+          if(record==="POINT_DATA"){var pc=integer("POINT_DATA tuple count",1000000);if(pc!==pointCount)throw new Error("POINT_DATA tuple count does not match POINTS.");association="point";continue;}
+          if(record==="CELL_DATA"){var cc=integer("CELL_DATA tuple count",150000);if(cc!==polygonCount)throw new Error("CELL_DATA tuple count must match the POLYGONS count; files with extra VTK cell types are not supported.");association="cell";continue;}
+          if(record==="VERTICES"||record==="LINES"||record==="TRIANGLE_STRIPS"){var otherCells=integer(record+" count",150000),otherSize=integer(record+" connectivity size",10000000);if(otherCells!==0||otherSize!==0)throw new Error("Only POLYGONS geometry is supported; non-empty "+record+" cells are not supported.");continue;}
+          if(record==="FIELD"){
+            next();var arrayCount=integer("FIELD array count",1000);for(var fa=0;fa<arrayCount;fa++){var fieldName=next(),fieldComponents=integer("FIELD component count",10000),fieldTuples=integer("FIELD tuple count",1000000);next();var fieldValues=readValues(fieldComponents*fieldTuples,fieldName);if(association)arrayRecord(fieldName,fieldComponents,fieldTuples,fieldValues,association);}continue;
+          }
+          if(!association)throw new Error("VTK arrays must be declared under POINT_DATA or CELL_DATA.");
+          if(record==="SCALARS"){
+            var scalarName=next();next();var components=1;if(/^\d+$/.test(tokens[at]||""))components=integer("SCALARS component count",16);
+            expect("LOOKUP_TABLE");var lookup=next();if(lookup.toLowerCase()!=="default")throw new Error("Custom VTK lookup tables are unsupported; export raw scalar arrays with LOOKUP_TABLE default.");
+            var tuples=association==="point"?pointCount:polygonCount;arrayRecord(scalarName,components,tuples,readValues(tuples*components,scalarName),association);continue;
+          }
+          if(record==="VECTORS"||record==="NORMALS"){
+            var vectorName=next();next();var vectorTuples=association==="point"?pointCount:polygonCount;arrayRecord(vectorName,3,vectorTuples,readValues(vectorTuples*3,vectorName),association);continue;
+          }
+          if(record==="TENSORS"){next();next();var tensorTuples=association==="point"?pointCount:polygonCount;readValues(tensorTuples*9,"tensor field");continue;}
+          throw new Error("Unsupported VTK attribute record '"+record+"'. Export pressure/shear arrays as SCALARS or VECTORS.");
+        }
+        if(!pointArrays.length&&!cellArrays.length)throw new Error("VTK contains no usable scalar or vector data arrays.");
+        return {points:points,polygons:polygons,pointArrays:pointArrays,cellArrays:cellArrays,triangleCount:triangleCount};
+      }
+      function vtkFieldOptions(selectId,componentCount,preferredPattern) {
+        var select=el(selectId),fields=[];select.innerHTML="";
+        var placeholder=document.createElement("option");placeholder.value="";placeholder.textContent=componentCount===1?"Choose a scalar field":"Choose a 3-component vector";select.appendChild(placeholder);
+        [meshVtkDataset.pointArrays,meshVtkDataset.cellArrays].forEach(function(group){var eligible=group.filter(function(field){return field.components===componentCount;});eligible.forEach(function(field,index){fields.push({field:field,index:index,association:field.association});});});
+        fields.forEach(function(item,index){var option=document.createElement("option");option.value=item.association+":"+index;option.textContent=(item.association==="point"?"POINT_DATA · ":"CELL_DATA · ")+item.field.name;select.appendChild(option);if(preferredPattern&&preferredPattern.test(item.field.name.replace(/[^a-z0-9]/gi,"").toLowerCase()))select.value=option.value;});
+        return fields.length;
+      }
+      function selectedVtkField(id,components) {
+        var value=el(id).value;if(!value)return null;var parts=value.split(":"),assoc=parts[0],wanted=Number(parts[1]),group=assoc==="point"?meshVtkDataset.pointArrays:meshVtkDataset.cellArrays;
+        var eligible=group.filter(function(field){return field.components===components;});return eligible[wanted]||null;
+      }
+      function mapVtkDataset() {
+        if(!meshVtkDataset)throw new Error("Import a VTK file before applying the field mapping.");
+        var pressure=selectedVtkField("meshVtkPressureField",1),shear=selectedVtkField("meshVtkShearField",3);if(!pressure||!shear)throw new Error("Select one scalar pressure field and one 3-component wall-shear vector.");
+        var scale=val("meshVtkLengthUnit",1),rows=[];
+        meshVtkDataset.polygons.forEach(function(poly,cellIndex){for(var fan=1;fan<poly.length-1;fan++){var tri=[poly[0],poly[fan],poly[fan+1]],row=[];tri.forEach(function(pointIndex){var point=meshVtkDataset.points[pointIndex],p=pressure.association==="point"?pressure.values[pointIndex]:pressure.values[cellIndex];if(pressure.components!==1)p=pressure.values[(pressure.association==="point"?pointIndex:cellIndex)*pressure.components];var offset=(shear.association==="point"?pointIndex:cellIndex)*3;var tau=shear.values.slice(offset,offset+3);row.push(point[0]*scale,point[1]*scale,point[2]*scale,p,tau[0],tau[1],tau[2]);});rows.push(row);}});
+        return rows;
+      }
+      function activateMeshRows(rows,label) {
+        var parsed=meshFromRows(rows);meshTriangles=parsed;meshInputRows=rows;meshQualityCache=null;setText("meshStatus",parsed.length+" triangles · "+label);
+        mode="mesh3d";document.querySelectorAll("[data-mode]").forEach(function(b){b.classList.toggle("active",b.dataset.mode===mode);});document.querySelectorAll(".subview").forEach(function(v){v.classList.toggle("active",v.id==="source-"+mode);});syncModeControls();update();
+      }
+      function prepareVtkMapping(dataset,fileName) {
+        meshVtkDataset=dataset;el("meshVtkMapping").hidden=false;setText("meshVtkFileLabel",fileName+" · "+dataset.triangleCount+" triangles");
+        var scalarCount=vtkFieldOptions("meshVtkPressureField",1,/^(p|press|pressure|cp|pressurecoefficient|gaugepressure)$/i);
+        var vectorCount=vtkFieldOptions("meshVtkShearField",3,/^(tau|shear|wallshear|wallshearstress|skinfriction|cf|wallstress)$/i);
+        if(!scalarCount||!vectorCount)throw new Error("VTK needs at least one scalar array for pressure and one 3-component vector array for wall shear. Found "+scalarCount+" scalar and "+vectorCount+" vector candidates.");
+        setText("meshStatus","VTK loaded · map pressure and shear fields");
+      }
       function meshFromRows(rows) {
         if(!Array.isArray(rows)||rows.length>150000)throw new Error("The case contains an invalid or oversized CFD triangle list.");
         if(!rows.length)return [];
@@ -1933,7 +2077,7 @@
         if(!rawControls||typeof rawControls!=="object"||Array.isArray(rawControls))throw new Error("The case file is missing its input controls.");
         var controls={};
         document.querySelectorAll("input[id],select[id],textarea[id]").forEach(function(node){
-          if(node.type==="file")return;
+          if(node.type==="file"||node.hasAttribute("data-transient"))return;
           if(!Object.prototype.hasOwnProperty.call(rawControls,node.id))throw new Error("Case file is missing the input named "+node.id+".");
           var value=rawControls[node.id];
           if(typeof value!=="string"||value.length>10000||(node.maxLength>0&&value.length>node.maxLength))throw new Error("The saved value for "+node.id+" is invalid.");
@@ -1974,7 +2118,7 @@
         if(!window.confirm("Opening this case replaces the current inputs and loaded data. Continue?"))return false;
         Object.keys(study.controls).forEach(function(id){el(id).value=study.controls[id];});
         mode=study.mode;basis2d=study.basis2d;basis3d=study.basis3d;panelFieldMethod=study.panelFieldMethod;panelEstimateConditions=study.panelEstimateConditions;
-        meshInputRows=study.meshRows;meshTriangles=study.meshTriangles;polarData=study.polarData;polarFileName=study.polarFileName;convergenceSnapshots=study.convergenceSnapshots;
+        meshInputRows=study.meshRows;meshTriangles=study.meshTriangles;meshQualityCache=null;meshVtkDataset=null;el("meshVtkMapping").hidden=true;polarData=study.polarData;polarFileName=study.polarFileName;convergenceSnapshots=study.convergenceSnapshots;
         renderPanelRows(study.panels);
         document.querySelectorAll(".subview").forEach(function(view){view.classList.toggle("active",view.id==="source-"+mode);});
         el("basis2d-body").classList.toggle("hidden",basis2d!=="body");el("basis2d-wind").classList.toggle("hidden",basis2d!=="wind");
@@ -2024,7 +2168,7 @@
           data.result={bodyAxial_N:r.A,bodyNormal_N:r.N,windDrag_N:r.D,windLift_N:r.L,momentOrigin_Nm:r.M,momentLeadingEdge_Nm:r.Mle,momentQuarterChord_Nm:r.Mq,centerOfPressure_x_over_c:r.cp,pressureCentroid_x_over_c:r.source&&r.source.centroid?r.source.centroid[0]/r.base.chord:null};
           if(r.source)data.input={panelValueBasis:el("panelDataBasis").value,dataMethod:panelFieldMethod,flowEstimateConditions:panelEstimateConditions,sectionAreaModifier_lambdaA:r.source.geometryFactor,panels:r.source.inputPanels.map(function(p){return {x1_over_c:p.x1,y1_over_c:p.y1,x2_over_c:p.x2,y2_over_c:p.y2,p1:p.pInput1,tau1:p.tauInput1,p2:p.pInput2,tau2:p.tauInput2};})};
         }else if(mode==="mesh3d"){
-          data.result={bodyForce_N:r.force,windForce_N:r.windForce,bodyMomentOrigin_Nm:r.moment,bodyMomentTarget_Nm:r.targetMoment,windMomentTarget_Nm:r.windTargetMoment};
+          data.result={bodyForce_N:r.force,windForce_N:r.windForce,bodyMomentOrigin_Nm:r.moment,bodyMomentTarget_Nm:r.targetMoment,windMomentTarget_Nm:r.windTargetMoment,pressureForce_N:r.pressureForce,shearForce_N:r.shearForce,pressureMomentOrigin_Nm:r.pressureMoment,shearMomentOrigin_Nm:r.shearMoment,meshTopology:r.source.quality};
           data.input={meshFormat:meshInputRows.length?(meshInputRows[0].length===21?"per-vertex triangle fields":"face-constant triangle fields"):null,fieldBasis:el("meshDataBasis").value,triangleRows:meshInputRows,momentOrigin_m:r.origin,momentTarget_m:r.target};
         }else data.result={bodyForce_N:r.force,windForce_N:r.windForce,bodyMomentOrigin_Nm:r.moment,bodyMomentTarget_Nm:r.targetMoment,windMomentTarget_Nm:r.windTargetMoment};
         data.validation=stateHealth(r);
