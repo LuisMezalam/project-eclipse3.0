@@ -634,7 +634,7 @@
         <p class="field-help" id="meshQualityNote" style="margin-bottom:0">Topology checks are diagnostic; a surface patch need not be a closed watertight body.</p>
       </article>
 
-      <div class="result-layout">
+      <div class="result-layout" id="visualResultLayout">
         <article class="card visual-card">
           <h3 class="visual-title" id="schematicTitle">Section load schematic</h3>
           <p class="visual-sub" id="schematicSub">The contour, local panel traction, body axes, and wind axes are shown together.</p>
@@ -649,8 +649,8 @@
         </article>
       </div>
 
-      <div class="result-layout" style="margin-top:13px">
-        <article class="card data-card">
+      <div class="result-layout" id="wrenchResultLayout" style="margin-top:13px">
+        <article class="card data-card" id="wrenchCard">
           <div class="card-head"><div><h3 class="card-title" style="font-size:16px">Axis transform &amp; wrench</h3><p class="card-description">The moment is transported separately from the force-axis rotation.</p></div><span class="tag neutral" id="wrenchBasisTag">2D section</span></div>
           <div id="wrench2d">
             <table class="data-table">
@@ -1752,6 +1752,7 @@
         svg.innerHTML=parts.join("");
       }
       function render2d(r) {
+        el("wrenchCard").classList.remove("hidden");el("visualResultLayout").classList.remove("hidden");
         el("meshAdvancedResults").classList.add("hidden");el("meshAdvancedResults").hidden=true;
         el("metrics2d").classList.remove("hidden"); el("metrics3d").classList.add("hidden");
         el("wrench2d").classList.remove("hidden"); el("wrench3d").classList.add("hidden");
@@ -1774,6 +1775,7 @@
         renderSchematic(r); renderPressure(r);
       }
       function render3d(r) {
+        el("wrenchCard").classList.remove("hidden");el("visualResultLayout").classList.remove("hidden");
         el("metrics2d").classList.add("hidden"); el("metrics3d").classList.remove("hidden");
         renderMeshAdvanced(r);
         el("wrench2d").classList.add("hidden"); el("wrench3d").classList.remove("hidden");
@@ -1860,6 +1862,8 @@
           var h=stateHealth(r); renderBanner(r,h); renderHealth(r,h);
           el("metrics2d").classList.add("hidden"); el("metrics3d").classList.add("hidden");
           el("meshAdvancedResults").classList.add("hidden");el("meshAdvancedResults").hidden=true;
+          el("wrenchCard").classList.add("hidden");el("visualResultLayout").classList.add("hidden");
+          setText("resultBadge","Awaiting valid input");el("resultBadge").className="tag neutral";
           renderBeam(r);
           return;
         }
